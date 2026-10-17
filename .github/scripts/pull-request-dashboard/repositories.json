@@ -14,11 +14,13 @@
   },
   {
     "name": "opentelemetry-go",
-    "approver_teams": ["go-approvers"]
+    "approver_teams": ["go-approvers"],
+    "require_clean_copilot_review_branches": ["main"]
   },
   {
     "name": "opentelemetry-go-contrib",
-    "approver_teams": ["go-approvers"]
+    "approver_teams": ["go-approvers"],
+    "require_clean_copilot_review_branches": ["main"]
   },
   {
     "name": "opentelemetry-java",
