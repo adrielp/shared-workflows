@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 from contextlib import nullcontext
+import os
 from pathlib import Path
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -217,6 +219,7 @@ class PublishablePrsTest(unittest.TestCase):
                 "state-branch",
                 True,
                 ["size/*"],
+                ["example-approvers"],
             )
 
         accepted_state_dir.assert_called_once_with("state-branch", required=True)
@@ -225,6 +228,7 @@ class PublishablePrsTest(unittest.TestCase):
             "open-telemetry/example",
             True,
             ["size/*"],
+            ["example-approvers"],
         )
         publish.assert_called_once_with("open-telemetry/example", Path("dashboard.md"))
 
@@ -257,7 +261,62 @@ class PublishablePrsTest(unittest.TestCase):
             [Path("old.md")],
         )
 
-    def test_passes_labels_to_renderer(self) -> None:
+    def test_parses_approver_teams_json(self) -> None:
+        self.assertEqual(
+            ["example-approvers"],
+            publish_dashboard.parse_approver_teams_json('["example-approvers"]'),
+        )
+        for raw in ("{", '"example-approvers"', '[""]'):
+            with self.subTest(raw=raw):
+                with self.assertRaisesRegex(RuntimeError, "APPROVER_TEAMS_JSON"):
+                    publish_dashboard.parse_approver_teams_json(raw)
+
+    @patch.object(publish_dashboard, "publish_accepted_dashboard")
+    def test_main_passes_approver_teams_from_the_environment(
+        self,
+        publish_accepted: object,
+    ) -> None:
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["publish_dashboard.py", "--repo", "example", "--state-branch", "state"],
+            ),
+            patch.dict(
+                os.environ,
+                {"APPROVER_TEAMS_JSON": '["example-approvers"]'},
+            ),
+        ):
+            self.assertEqual(0, publish_dashboard.main())
+
+        publish_accepted.assert_called_once_with(
+            "open-telemetry/example",
+            "state",
+            False,
+            [],
+            ["example-approvers"],
+        )
+
+    @patch.object(publish_dashboard, "publish_accepted_dashboard")
+    def test_main_defaults_to_no_approver_teams(self, publish_accepted: object) -> None:
+        environment = {
+            key: value
+            for key, value in os.environ.items()
+            if key != "APPROVER_TEAMS_JSON"
+        }
+        with (
+            patch.object(
+                sys,
+                "argv",
+                ["publish_dashboard.py", "--repo", "example", "--state-branch", "state"],
+            ),
+            patch.dict(os.environ, environment, clear=True),
+        ):
+            self.assertEqual(0, publish_dashboard.main())
+
+        self.assertEqual([], publish_accepted.call_args.args[4])
+
+    def test_passes_labels_and_approvers_to_renderer(self) -> None:
         prs = [
             {
                 "number": 1,
@@ -290,6 +349,11 @@ class PublishablePrsTest(unittest.TestCase):
                     "dashboard_markdown_path",
                     return_value=output_path,
                 ),
+                patch.object(
+                    publish_dashboard,
+                    "load_team_members",
+                    return_value={"approver"},
+                ) as load_team_members,
             ):
                 self.assertEqual(
                     output_path,
@@ -297,16 +361,46 @@ class PublishablePrsTest(unittest.TestCase):
                         "open-telemetry/example",
                         False,
                         ["size/*"],
+                        ["example-approvers"],
                     ),
                 )
 
+        load_team_members.assert_called_once_with(
+            "open-telemetry",
+            ["example-approvers"],
+        )
         render_pr_tables.assert_called_once_with(
             prs,
             results,
             max_rows_per_section=None,
             skip_drafts=False,
             labels_to_display=["size/*"],
+            approver_logins=frozenset({"approver"}),
         )
+
+    def test_skips_team_lookup_without_approver_teams(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            output_path = Path(tmp) / "dashboard.md"
+            with (
+                patch.object(
+                    publish_dashboard,
+                    "load_dashboard_state_cache",
+                    return_value=dashboard_state(),
+                ),
+                patch.object(publish_dashboard, "list_open_prs", return_value=[]),
+                patch.object(
+                    publish_dashboard,
+                    "dashboard_markdown_path",
+                    return_value=output_path,
+                ),
+                patch.object(publish_dashboard, "load_team_members") as load_team_members,
+            ):
+                publish_dashboard.render_dashboard_markdown(
+                    "open-telemetry/example",
+                    False,
+                )
+
+        load_team_members.assert_not_called()
 
     def test_renders_effective_draft_authors_from_the_open_pull_listing(self) -> None:
         pulls = [

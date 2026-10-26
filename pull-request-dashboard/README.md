@@ -99,7 +99,12 @@ There is no direct-dispatch fallback or return-to-legacy execution mode.
 The dashboard groups open non-draft pull requests by who is expected to act next (e.g. *Waiting on reviewers*, *Waiting on authors*, *Waiting on maintainers*). Draft PRs are listed separately at the bottom unless `large_repo` rendering is enabled. Within each group, rows are sorted longest-waiting first. Every row has these six columns:
 
 - **PR** — Pull request number and title, followed by any configured matching labels. The number autolinks to the PR on GitHub. Configured labels are rendered inline for both active and draft PRs.
-- **Author** — Effective author of the PR, including in the draft section. For Copilot-authored PRs, this is the human assignee or first-commit committer when available.
+- **Author** — Effective author of the PR, including in the draft section. For Copilot-authored PRs, this is the human assignee or first-commit committer when available. The login is followed by at most one badge, checked in this order:
+  - 🤖 bot account
+  - 🛠️ approver or maintainer: a member of one of the repository's `approver_teams`, including members of their child teams such as the maintainers team
+  - 🔭 other member of the `open-telemetry` organization
+  - 🆕 first-time contributor to the repository
+  - Organization membership and first-time status come from GitHub's author association for the PR, so they are not shown when a Copilot-authored PR is attributed to its human assignee or committer.
 - **Reviewers** — Reviewers who have engaged with the PR, excluding the effective author even when assigned or requested for review, each annotated with one or more icons:
   - ✅ active approval
   - ✔️ active approval (non-code-owner — does **not** count toward `required_approvals`)
@@ -163,7 +168,7 @@ Fields:
 | Field | Required | Description |
 | ----- | -------- | ----------- |
 | `name` | yes | Name of the repository under `open-telemetry`. |
-| `approver_teams` | yes | GitHub team slugs whose members count as approvers. |
+| `approver_teams` | yes | GitHub team slugs whose members count as approvers. Members, including those of child teams such as the maintainers team, are also shown with the 🛠️ badge in the dashboard's Author column. |
 | `required_approvals` | no | Number of active approvals required for an open PR to be marked ready to merge. An approval stops counting while that reviewer has a pending re-review request. Defaults to `1`. |
 | `labels_to_display` | no | Case-sensitive shell-style label name patterns to display inline after PR titles. Exact names such as `breaking change` and wildcard patterns such as `size/*` are supported. Defaults to `[]`, which displays no labels. |
 | `non_blocking_check_patterns` | no | Check-name globs for non-required checks whose failures should be identified in the live PR status comment. When the PR is waiting on the author, matching failures are reported only when at least one required check is failing and are noted alongside those failures. On other routes, matching failures are shown separately. Matching checks remain informational and do not affect routing or the dashboard CI column. |
